@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+set -e
+# set -x
+
+: ${STEPPATH:=$HOME/.step}
+
+if [[ ! -d "${STEPPATH}" ]]; then
+  echo "STEPPATH ${STEPPATH} directory not found!"
+  exit 1
+fi
+
+export STEPPATH
+
+expand_tilde() {                                                                 
+  tilde_less="${1#\~/}"
+  [ "$1" != "$tilde_less" ] && tilde_less="$HOME/$tilde_less"
+  printf '%s\n' "$tilde_less"
+}
+
+print_green() {
+  echo -n -e "\e[32m${1}\e[0m"
+}
+
+print_yellow() {
+  echo -n -e "\e[1;33m${1}\e[0m"
+}
+
+print_red() {
+  echo -n -e "\e[1;31m${1}\e[0m"
+}
+
+for authority in $(ls ${STEPPATH}/authorities); do
+  SSH_PRIVATE_KEY=$(expand_tilde $(grep IdentityFile ${STEPPATH}/authorities/$authority/ssh/config |rev |cut -d ' ' -f1 |rev))
+  SSH_PUBLIC_KEY="${SSH_PRIVATE_KEY}.pub"
+  SSH_CERT="${SSH_PRIVATE_KEY}-cert.pub"
+  PROVISIONER=$(grep ProxyCommand ${STEPPATH}/authorities/$authority/ssh/config |cut -d '"' -f2)
+  SSH_USER_NAME=$(grep 'User ' ${STEPPATH}/authorities/$authority/ssh/config |rev |cut -d ' ' -f1 |rev)
+  EXPIRATION_WINDOW="9h"
+  set +e
+  step ssh needs-renewal ${SSH_CERT} --expires-in $EXPIRATION_WINDOW 2>/dev/null
+  STATUS=$?
+  set -e
+  # conditional based on exit codes documented at
+  # https://smallstep.com/docs/step-cli/reference/ssh/needs-renewal/#exit-codes
+  if [ $STATUS -eq 0 ]; then
+    print_yellow "${authority}"
+    echo "'s cert has expired or will expire within the next ${EXPIRATION_WINDOW}, renewing."
+    step context select $authority
+    echo -n "You may be asked if you want to overwrite files. Say yes if they are the ones for the "
+    print_yellow "${authority}"
+    echo " context"
+    KEY_ID=$(step ssh inspect --format json ${SSH_CERT} |jq -r '.KeyID')
+    step ssh certificate --sign --provisioner $PROVISIONER ${KEY_ID} ${SSH_PUBLIC_KEY}
+    EXPIRATION=$(step ssh inspect --format json ${SSH_CERT} |jq -r '.ValidBefore')
+    print_green "${authority}"
+    echo "'s cert is now good until $EXPIRATION"
+  elif [ $STATUS -eq 1 ]; then
+    EXPIRATION=$(step ssh inspect --format json ${SSH_CERT} |jq -r '.ValidBefore')
+    print_green "${authority}"
+    echo "'s cert is good until $EXPIRATION"
+  elif [ $STATUS -eq 2 ]; then
+    print_red "Tried to check the expiration of ${SSH_CERT} but it doesn't seem to exist"
+    exit 2
+  elif [ $STATUS -eq 255 ]; then
+    echo "Something went wrong, try running the following command manually to debug:"
+    echo "step ssh needs-renewal ${SSH_CERT} --expires-in $EXPIRATION_WINDOW"
+    exit 255
+  else
+    echo "Something went very wrong... this line is only reached if an unexpected exit code was given by 'step ssh needs-renwal'."
+    echo "You might have luck debugging by running the following command manually:"
+    echo "step ssh needs-renewal ${SSH_CERT} --expires-in $EXPIRATION_WINDOW"
+    exit 1
+  fi
+done
+
+echo
+echo -n "Please note that the current context is '"
+print_yellow $(step context current)
+echo "' and that it may not be the one you were in before running this command."
