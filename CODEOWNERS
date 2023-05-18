@@ -1,0 +1,4 @@
+# Responsibility for the code withing this repo is shared between
+# IT and Release Engineering.
+
+* @puppetlabs/it-ops @puppetlabs/release-engineering
