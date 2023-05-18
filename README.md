@@ -6,6 +6,8 @@ These are written for internal use, but may provide inspiration for others. Do n
 
 ## Usage
 
+The installation process below will take care of both initial installations and updating existing installations.
+
 ### On Linux and macOS
 
 ```bash
