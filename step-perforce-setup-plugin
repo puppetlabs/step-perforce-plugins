@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+
+set -e
+# set -x
+
+: ${STEPPATH:=$HOME/.step}
+
+if [[ ! -d "${STEPPATH}" ]]; then
+  echo "STEPPATH ${STEPPATH} directory not found!"
+  exit 1
+fi
+
+export STEPPATH
+
+expand_tilde() {                                                                 
+  tilde_less="${1#\~/}"
+  [ "$1" != "$tilde_less" ] && tilde_less="$HOME/$tilde_less"
+  printf '%s\n' "$tilde_less"
+}
+
+print_green() {
+  echo -n -e "\e[32m${1}\e[0m"
+}
+
+print_yellow() {
+  echo -n -e "\e[1;33m${1}\e[0m"
+}
+
+print_red() {
+  echo -n -e "\e[1;31m${1}\e[0m"
+}
+
+# Calvin S figlet font
+# http://www.patorjk.com/software/taag/#p=display&f=Calvin%20S&t=Perforce%0ASmallstep%0ASetup
+cat <<'END_WELCOME'
+╔═╗┌─┐┬─┐┌─┐┌─┐┬─┐┌─┐┌─┐   
+╠═╝├┤ ├┬┘├┤ │ │├┬┘│  ├┤    
+╩  └─┘┴└─└  └─┘┴└─└─┘└─┘   
+╔═╗┌┬┐┌─┐┬  ┬  ┌─┐┌┬┐┌─┐┌─┐
+╚═╗│││├─┤│  │  └─┐ │ ├┤ ├─┘
+╚═╝┴ ┴┴ ┴┴─┘┴─┘└─┘ ┴ └─┘┴  
+╔═╗┌─┐┌┬┐┬ ┬┌─┐            
+╚═╗├┤  │ │ │├─┘            
+╚═╝└─┘ ┴ └─┘┴                      
+
+END_WELCOME
+
+print_green "This tool will ensure your machine is ready to ssh into our systems that utilize SSH Certificates for authentication. During this process your browser will be opened twice to facilitate the SSO process." && echo
+echo
+
+read -p 'What is your Perforce username? ' pf_username
+echo
+
+export PERFORCE_USERNAME=$pf_username
+export SSH_KEY_TYPE=ecdsa
+export SSH_KEY_GEN_OPTIONS='-b 521'
+
+print_green "Generating a ssh key for use when connecting to persistent systems such as servers..." && echo
+echo
+
+ssh-keygen -t $SSH_KEY_TYPE $SSH_KEY_GEN_OPTIONS -C "$PERFORCE_USERNAME via Perforce Smallstep Persistent" -f ~/.ssh/id_${SSH_KEY_TYPE}_perforce_smallstep_persistent
+echo
+
+print_green "Generating a ssh key for use when connecting to ephemeral systems such as those handed out by ABS..." && echo
+echo
+
+ssh-keygen -t $SSH_KEY_TYPE $SSH_KEY_GEN_OPTIONS -C "$PERFORCE_USERNAME via Perforce Smallstep ABS" -f ~/.ssh/id_${SSH_KEY_TYPE}_perforce_smallstep_abs
+echo
+
+print_green "Bootstrapping the "
+print_yellow "perforce-persistent"
+print_green " step context. This context is used when connecting to persistent systems." && echo
+step ca bootstrap --context perforce-persistent --team perforce
+echo
+
+print_green "Bootstrapping the "
+print_yellow "perforce-abs"
+print_green " step context. This context is used when connecting to ephemeral systems." && echo
+step ca bootstrap --context perforce-abs --ca-url https://abs.perforce.ca.smallstep.com --fingerprint d63f510b17f85181a6c68b43ca35cefd447743c0e5dc1495379b8b40378a3dbc
+echo
+
+print_green "Switching to the perforce-persistent context and signing the id_${SSH_KEY_TYPE}_perforce_smallstep_persistent.pub certificate." && echo
+step context select perforce-persistent
+step ssh certificate --sign --provisioner azuread $PERFORCE_USERNAME@perforce.com ~/.ssh/id_${SSH_KEY_TYPE}_perforce_smallstep_persistent.pub 
+step ssh config --set User=$PERFORCE_USERNAME --set IdentityFile=~/.ssh/id_${SSH_KEY_TYPE}_perforce_smallstep_persistent --set IdentitiesOnly=yes 
+echo
+
+print_green "Switching to the perforce-abs context and signing the id_${SSH_KEY_TYPE}_perforce_smallstep_abs.pub certificate." && echo
+step context select perforce-abs
+step ssh certificate --sign --provisioner=abs-azuread $PERFORCE_USERNAME@perforce.com ~/.ssh/id_${SSH_KEY_TYPE}_perforce_smallstep_abs.pub 
+step ssh config --set User=root --set IdentityFile=~/.ssh/id_${SSH_KEY_TYPE}_perforce_smallstep_abs --set IdentitiesOnly=yes
+echo
+
+print_green "Below are the configuration files created by this tool." && echo
+echo
+
+print_green "Here is what is in '$HOME/.step/ssh/includes': " && echo
+cat $HOME/.step/ssh/includes
+echo
+
+print_green "Here is what is in '$HOME/.step/authorities/perforce-abs/ssh/config': " && echo
+cat $HOME/.step/authorities/perforce-abs/ssh/config
+echo
+
+print_green "Here is what is in '$HOME/.step/authorities/perforce-persistent/ssh/config': " && echo
+cat $HOME/.step/authorities/perforce-persistent/ssh/config
+echo
+
+echo
+echo -n "Please edit your '"
+print_yellow ".ssh/config"
+echo -n "' and ensure that you only have one entry for '"
+print_yellow "Host *"
+echo "'. If you have more than one, combine their contents into a single entry."
+echo
+echo -n "Please also remove any block with the heading '"
+print_yellow "Host *.vmpooler-*.puppet.net"
+echo "' as it is now handled by configruation manged via the step command."
