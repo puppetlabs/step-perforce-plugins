@@ -6,6 +6,12 @@ These are written for internal use, but may provide inspiration for others. Do n
 
 ## Usage
 
+### On Linux and macOS
+
 ```bash
 ./install.sh
 ```
+
+### On Windows
+
+Windows plugins will be coming soon... 
