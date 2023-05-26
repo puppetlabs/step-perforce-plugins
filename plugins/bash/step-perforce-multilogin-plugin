@@ -47,10 +47,6 @@ for authority in $(ls ${STEPPATH}/authorities); do
     print_yellow "${authority}"
     echo "'s cert has expired or will expire within the next ${EXPIRATION_WINDOW}, renewing."
     step context select $authority
-    echo -n "You may be asked if you want to overwrite files. Say yes if they are the ones for the "
-    print_yellow "${authority}"
-    echo " context"
-    KEY_ID=$(step ssh inspect --format json ${SSH_CERT} |jq -r '.KeyID')
     step ssh login --provisioner $PROVISIONER
     EXPIRATION=$(step ssh inspect --format json ${SSH_CERT} |jq -r '.ValidBefore')
     print_green "${authority}"
