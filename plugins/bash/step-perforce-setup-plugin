@@ -48,8 +48,13 @@ END_WELCOME
 print_green "This tool will ensure your machine is ready to ssh into our systems that utilize SSH Certificates for authentication. During this process your browser will be opened twice to facilitate the SSO process." && echo
 echo
 
-read -p 'What is your Perforce username? ' pf_username
+read -p 'What is your Perforce username (the part before the @ in your email)? ' pf_username
 echo
+
+if [[ "$pf_username" == *"@"* ]]; then
+  echo "This tool needs just your username, not the full email address. Please try again."
+  exit 1
+fi
 
 export PERFORCE_USERNAME=$pf_username
 export SSH_KEY_TYPE=ecdsa
