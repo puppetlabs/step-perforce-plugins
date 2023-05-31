@@ -44,21 +44,15 @@ for authority in $(ls ${STEPPATH}/authorities); do
   # conditional based on exit codes documented at
   # https://smallstep.com/docs/step-cli/reference/ssh/needs-renewal/#exit-codes
   if [ $STATUS -eq 0 ]; then
-    print_yellow "${authority}"
-    echo "'s cert has expired or will expire within the next ${EXPIRATION_WINDOW}, renewing."
+    print_yellow "${authority}" && echo "'s cert has expired or will expire within the next ${EXPIRATION_WINDOW}, renewing."
     step context select $authority
-    echo -n "You may be asked if you want to overwrite files. Say yes if they are the ones for the "
-    print_yellow "${authority}"
-    echo " context"
     KEY_ID=$(step ssh inspect --format json ${SSH_CERT} |jq -r '.KeyID')
-    step ssh certificate --sign --provisioner $PROVISIONER ${KEY_ID} ${SSH_PUBLIC_KEY}
+    step ssh certificate --sign --provisioner $PROVISIONER ${KEY_ID} ${SSH_PUBLIC_KEY} --force
     EXPIRATION=$(step ssh inspect --format json ${SSH_CERT} |jq -r '.ValidBefore')
-    print_green "${authority}"
-    echo "'s cert is now good until $EXPIRATION"
+    print_green "${authority}" && echo "'s cert is now good until $EXPIRATION"
   elif [ $STATUS -eq 1 ]; then
     EXPIRATION=$(step ssh inspect --format json ${SSH_CERT} |jq -r '.ValidBefore')
-    print_green "${authority}"
-    echo "'s cert is good until $EXPIRATION"
+    print_green "${authority}" && echo "'s cert is good until $EXPIRATION"
   elif [ $STATUS -eq 2 ]; then
     print_red "Tried to check the expiration of ${SSH_CERT} but it doesn't seem to exist"
     exit 2
@@ -75,6 +69,4 @@ for authority in $(ls ${STEPPATH}/authorities); do
 done
 
 echo
-echo -n "Please note that the current context is '"
-print_yellow $(step context current)
-echo "' and that it may not be the one you were in before running this command."
+echo -n "Please note that the current context is '" && print_yellow $(step context current) && echo "' and that it may not be the one you were in before running this command."
